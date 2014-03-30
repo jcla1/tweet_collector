@@ -1,13 +1,9 @@
+var fs = require('fs')
 var twitter = require('ntwitter');
 var sqlite3 = require('sqlite3').verbose();
 
 /* VARIABLES */
-var twit = new twitter({
-  consumer_key: '',
-  consumer_secret: '',
-  access_token_key: '',
-  access_token_secret: ''
-});
+var twit = new twitter(JSON.parse(fs.readFileSync('config.json')));
 
 var db_name = 'tweet_data.sqlite';
 var tweet_table_schema = 'tweet_id TEXT, text TEXT, created_at INTEGER, in_reply_to_status_id TEXT, in_reply_to_user_id INTEGER, retweeted_status_id INTEGER, source TEXT, user_id INTEGER';
@@ -182,11 +178,6 @@ function main() {
     setTimeout(function() {
         log('INFO: Up to', new Date(), 'you recieved', tweet_counter, 'tweets');
         tweet_counter = 0;
-        setTimeout(arguments.callee, 10000);
-    }, 10000)
-
-    setTimeout(function() {
-        global.gc();
         setTimeout(arguments.callee, 10000);
     }, 10000)
 }
