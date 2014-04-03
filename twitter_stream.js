@@ -1,4 +1,4 @@
-var fs = require('fs')
+var fs = require('fs');
 var twitter = require('ntwitter');
 var sqlite3 = require('sqlite3').verbose();
 
