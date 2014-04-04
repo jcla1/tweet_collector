@@ -25,3 +25,9 @@ SELECT AVG(count) AS average FROM
         GROUP BY retweeted_status_id
         ORDER BY count DESC
     ) AS counts;
+
+-- Find tweets that are retweets of retweets
+SELECT * FROM tweets
+	LEFT JOIN tweets AS t ON t.retweeted_status_id = tweets.tweet_id 
+	WHERE tweets.retweeted_status_id IS NOT NULL
+	LIMIT 1;

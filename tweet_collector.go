@@ -66,7 +66,7 @@ func main() {
 		panic(err)
 	}
 
-	tweets := make(chan *twitter.Tweet, 10000)
+	tweets := make(chan *twitter.Tweet)
 	go tweetConsumer(conn, tweets)
 
 	processTweets(db, tweets)
