@@ -3,14 +3,13 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	twitter "github.com/darkhelmet/twitterstream"
+	twitter "github.com/jcla1/twitterstream"
 	_ "github.com/go-sql-driver/mysql"
 	"io/ioutil"
 	"os"
+  "time"
+  "log"
 )
-
-var _ = fmt.Println
 
 var (
 	tweetsTableCreate = "CREATE TABLE IF NOT EXISTS `tweets` (" +
@@ -40,6 +39,8 @@ var (
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
 	userByIdSql   = "SELECT user_id FROM users WHERE user_id = ?;"
 	tweetByIdSql  = "SELECT tweet_id FROM tweets WHERE tweet_id = ?;"
+	putTweetSql   = "INSERT INTO tweets VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	putUserSql    = "INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	trackKeywords = []string{"RT", "http"}
 )
 
@@ -65,15 +66,50 @@ func main() {
 		panic(err)
 	}
 
-	tweets := make(chan *twitter.Tweet)
+	tweets := make(chan *twitter.Tweet, 10000)
 	go tweetConsumer(conn, tweets)
 
 	processTweets(db, tweets)
 }
 
 func processTweets(db *sql.DB, tweets <-chan *twitter.Tweet) {
-	for tweet := range tweets {
+	saveTweet := prepareTweetSaver(db)
 
+  latestTime := time.Now()
+  tweetCounter := 0
+
+	for tweet := range tweets {
+		saveTweet(tweet)
+    tweetCounter += 1
+
+    if tweetCounter % 1000 == 0 {
+      duration := time.Now().Sub(latestTime)
+      log.Printf("current collection rate: %0.2f tweets/min", float64(tweetCounter)/(float64(duration)/float64(time.Minute)))
+
+      latestTime = time.Now()
+      tweetCounter = 0
+    }
+	}
+}
+
+func prepareTweetSaver(db *sql.DB) func(*twitter.Tweet) {
+	getUser, getTweet := prepareGetUser(db), prepareGetTweet(db)
+	putUser, putTweet := preparePutUser(db), preparePutTweet(db)
+
+	return func(tweet *twitter.Tweet) {
+	start:
+		if !getUser(tweet.User) {
+			putUser(tweet.User)
+		}
+
+		if !getTweet(tweet) {
+			putTweet(tweet)
+		}
+
+		if tweet.RetweetedStatus != nil {
+			tweet = tweet.RetweetedStatus
+			goto start
+		}
 	}
 }
 
@@ -129,22 +165,47 @@ func setupStreamConnection(authCred map[string]string) (*twitter.Connection, err
 	return client.Track(trackKeywords...)
 }
 
-func prepareGetUser(db *sql.DB) func(*twitter.User) bool {
+func preparePutUser(db *sql.DB) func(twitter.User) {
+	putUserStmt, err := db.Prepare(putUserSql)
+	if err != nil {
+		panic(err)
+	}
+
+	return func(u twitter.User) {
+		putUserStmt.Exec(u.Id, u.Name, u.ScreenName, u.FollowersCount, u.FriendsCount, u.ListedCount, u.CreatedAt.Time, u.FavouritesCount, u.Verified, u.StatusesCount, u.DefaultProfileImage)
+	}
+}
+
+func prepareGetUser(db *sql.DB) func(twitter.User) bool {
 	userByIdStmt, err := db.Prepare(userByIdSql)
 	if err != nil {
 		panic(err)
 	}
 
-	return func(user *twitter.User) bool {
+	return func(user twitter.User) bool {
 		row := userByIdStmt.QueryRow(user.Id)
-		if err != nil {
-			panic(err)
-		}
 
 		var id int
 		err = row.Scan(&id)
 
 		return err == nil
+	}
+}
+
+func preparePutTweet(db *sql.DB) func(*twitter.Tweet) {
+	putTweetStmt, err := db.Prepare(putTweetSql)
+	if err != nil {
+		panic(err)
+	}
+
+	return func(t *twitter.Tweet) {
+		var retweetedStatusId sql.NullInt64
+		if t.RetweetedStatus != nil {
+			retweetedStatusId.Int64 = t.RetweetedStatus.Id
+			retweetedStatusId.Valid = true
+		}
+
+		putTweetStmt.Exec(t.Id, t.Text, t.CreatedAt.Time, t.InReplyToStatusId, t.InReplyToUserId, retweetedStatusId, t.Source, t.User.Id)
 	}
 }
 
@@ -156,9 +217,6 @@ func prepareGetTweet(db *sql.DB) func(*twitter.Tweet) bool {
 
 	return func(tweet *twitter.Tweet) bool {
 		row := tweetByIdStmt.QueryRow(tweet.Id)
-		if err != nil {
-			panic(err)
-		}
 
 		var id int
 		err = row.Scan(&id)
