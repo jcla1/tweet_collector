@@ -3,12 +3,12 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	twitter "github.com/jcla1/twitterstream"
 	_ "github.com/go-sql-driver/mysql"
+	twitter "github.com/jcla1/twitterstream"
 	"io/ioutil"
+	"log"
 	"os"
-  "time"
-  "log"
+	"time"
 )
 
 var (
@@ -75,20 +75,20 @@ func main() {
 func processTweets(db *sql.DB, tweets <-chan *twitter.Tweet) {
 	saveTweet := prepareTweetSaver(db)
 
-  latestTime := time.Now()
-  tweetCounter := 0
+	latestTime := time.Now()
+	tweetCounter := 0
 
 	for tweet := range tweets {
 		saveTweet(tweet)
-    tweetCounter += 1
+		tweetCounter += 1
 
-    if tweetCounter % 1000 == 0 {
-      duration := time.Now().Sub(latestTime)
-      log.Printf("current collection rate: %0.2f tweets/min", float64(tweetCounter)/(float64(duration)/float64(time.Minute)))
+		if tweetCounter%1000 == 0 {
+			duration := time.Now().Sub(latestTime)
+			log.Printf("current collection rate: %0.2f tweets/min", float64(tweetCounter)/(float64(duration)/float64(time.Minute)))
 
-      latestTime = time.Now()
-      tweetCounter = 0
-    }
+			latestTime = time.Now()
+			tweetCounter = 0
+		}
 	}
 }
 
